@@ -1,0 +1,1 @@
+Tohle je script pro hru Pokemon
