@@ -1,0 +1,169 @@
+import tkinter as tk
+from tkinter import messagebox
+import random
+import openpyxl
+
+
+# ------------------- PŘÍKLADY -------------------
+
+def nacti_ulohy(soubor):
+    workbook = openpyxl.load_workbook(soubor)
+    sheet = workbook.active
+    ulohy = []
+    for row in sheet.iter_rows(min_row=1, values_only=True):
+        zadani, vysledek = row[1], row[2]
+        ulohy.append((zadani, vysledek))
+    return ulohy
+
+
+def start_kolo(typ):
+    global priklady, index, spravne
+    cesta = f"{typ}.xlsx"
+    priklady = random.sample(nacti_ulohy(cesta), 4)
+    index = 0
+    spravne = 0
+    zobraz_priklad()
+
+
+def zobraz_priklad():
+    global index
+    if index < 4:
+        zadani_label.config(text=f"Příklad {index + 1}: {priklady[index][0]}")
+        odpoved_entry.delete(0, tk.END)
+    else:
+        messagebox.showinfo("Hotovo", "Správně jsi vyřešil 4 příklady!\nTeď začne bludiště 🎮")
+        if 'okno' in globals() and okno.winfo_exists():
+                okno.destroy()# skryj okno s úlohami
+        start_bludiste()
+
+
+def zkontroluj():
+    global index, spravne
+    odpoved = odpoved_entry.get()
+
+    if odpoved == str(priklady[index][1]):
+        spravne += 1
+        index += 1  # posun na další příklad
+        if spravne >= 4:
+            messagebox.showinfo("Hotovo", "Správně jsi vyřešil 4 příklady!\nTeď začne bludiště 🎮")
+            if 'okno' in globals() and okno.winfo_exists():
+                okno.destroy()
+            start_bludiste()
+            return
+    else:
+        # pouze upozornění, bez zobrazení správné odpovědi
+        messagebox.showwarning("Chyba", "Špatně! Zkus to znovu.")
+
+    # zobraz další příklad, pokud jsme u správné odpovědi
+    if index < len(priklady):
+        zobraz_priklad()
+
+def menu_volby():
+    global okno
+    okno = tk.Toplevel(root)
+    okno.title("Výběr typu úloh")
+    tk.Label(okno, text="Vyber typ úloh:").pack(pady=10)
+    for typ in ["scitani", "odcitani", "nasobeni", "deleni"]:
+        tk.Button(okno, text=typ.capitalize(),
+                  command=lambda t=typ: [okno.destroy(), start_kolo(t)]).pack(pady=5)
+
+
+# ------------------- BLUDIŠTĚ -------------------
+
+ROWS, COLS = 15, 15
+cell_size = 30
+
+
+def init_maze(rows, cols):
+    return [[1 for _ in range(cols)] for _ in range(rows)]
+
+
+def generate_maze(maze, x, y):
+    maze[y][x] = 0
+    directions = [(0, -1), (0, 1), (-1, 0), (1, 0)]
+    random.shuffle(directions)
+    for dx, dy in directions:
+        nx, ny = x + dx * 2, y + dy * 2
+        if 0 < nx < COLS and 0 < ny < ROWS and maze[ny][nx] == 1:
+            maze[y + dy][x + dx] = 0
+            generate_maze(maze, nx, ny)
+    return maze
+
+
+def start_bludiste():
+    global maze, player_pos, start_pos, end_pos, canvas
+    maze = init_maze(ROWS, COLS)
+    maze = generate_maze(maze, 1, 1)
+    start_pos = (1, 1)
+    end_pos = (ROWS - 2, COLS - 2)
+    maze[start_pos[1]][start_pos[0]] = 0
+    maze[end_pos[1]][end_pos[0]] = 0
+    player_pos = list(start_pos)
+
+    bludiste_window = tk.Toplevel(root)
+    bludiste_window.title("Bludiště")
+    bludiste_window.geometry(f"{COLS * cell_size}x{ROWS * cell_size}")
+    bludiste_window.focus_set()
+
+    canvas = tk.Canvas(bludiste_window, width=COLS * cell_size, height=ROWS * cell_size)
+    canvas.pack()
+
+    colors = {0: "white", 1: "black", "player": "blue", "start": "green", "end": "red"}
+
+    def draw_maze():
+        canvas.delete("all")
+        for y in range(ROWS):
+            for x in range(COLS):
+                fill = colors[maze[y][x]]
+                if (x, y) == tuple(player_pos):
+                    fill = colors["player"]
+                elif (x, y) == start_pos:
+                    fill = colors["start"]
+                elif (x, y) == end_pos:
+                    fill = colors["end"]
+                canvas.create_rectangle(x * cell_size, y * cell_size,
+                                        (x + 1) * cell_size, (y + 1) * cell_size,
+                                        fill=fill, outline="gray")
+
+    def move(event):
+        x, y = player_pos
+        if event.keysym == 'Up':
+            ny = y - 1
+            if ny >= 0 and maze[ny][x] == 0: player_pos[1] = ny
+        elif event.keysym == 'Down':
+            ny = y + 1
+            if ny < ROWS and maze[ny][x] == 0: player_pos[1] = ny
+        elif event.keysym == 'Left':
+            nx = x - 1
+            if nx >= 0 and maze[y][nx] == 0: player_pos[0] = nx
+        elif event.keysym == 'Right':
+            nx = x + 1
+            if nx < COLS and maze[y][nx] == 0: player_pos[0] = nx
+        draw_maze()
+        check_win()
+
+    def check_win():
+        if tuple(player_pos) == end_pos:
+            messagebox.showinfo("Gratulace!", "Dorazil jsi do cíle!")
+            bludiste_window.destroy()
+            menu_volby()
+
+    bludiste_window.bind("<Key>", move)
+    draw_maze()
+
+
+# ------------------- Hlavní okno -------------------
+
+root = tk.Tk()
+root.title("Matematický labyrint")
+
+zadani_label = tk.Label(root, text="Vyber si typ úloh v menu", font=("Arial", 14))
+zadani_label.pack(pady=20)
+
+odpoved_entry = tk.Entry(root, font=("Arial", 14))
+odpoved_entry.pack(pady=10)
+
+tk.Button(root, text="Odpovědět", command=zkontroluj).pack(pady=10)
+tk.Button(root, text="Vybrat úlohy", command=menu_volby).pack(pady=10)
+
+root.mainloop()
